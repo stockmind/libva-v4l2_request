@@ -102,7 +102,8 @@ static int queue_buffer(struct v4l2r_context *ctx, struct v4l2_buffer *buffer)
 {
 	struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
 
-	if (V4L2_TYPE_IS_OUTPUT(buffer->type)) {
+	if (V4L2_TYPE_IS_OUTPUT(buffer->type) &&
+	    V4L2_TYPE_IS_MULTIPLANAR(buffer->type)) {
 		planes[0].bytesused = buffer->bytesused;
 		buffer->bytesused = 0;
 		buffer->length = 1;
@@ -147,11 +148,17 @@ static int queue_capture_buffer(struct v4l2r_context *ctx, uint32_t index)
 	if (!surface->nb_planes)
 		return -EINVAL;
 
-	buffer.length = surface->nb_planes;
-	buffer.m.planes = planes;
-	for (unsigned int i = 0; i < surface->nb_planes; i++) {
-		planes[i].m.fd = surface->dmabuf_fd[i];
-		planes[i].length = surface->plane_size[i];
+	if (V4L2_TYPE_IS_MULTIPLANAR(buffer.type)) {
+		buffer.length = surface->nb_planes;
+		buffer.m.planes = planes;
+		for (unsigned int i = 0; i < surface->nb_planes; i++) {
+			planes[i].m.fd = surface->dmabuf_fd[i];
+			planes[i].length = surface->plane_size[i];
+		}
+	} else {
+		/* Single-planar: one fd in m.fd, size in length. */
+		buffer.length = surface->plane_size[0];
+		buffer.m.fd = surface->dmabuf_fd[0];
 	}
 
 	return queue_buffer(ctx, &buffer);
@@ -180,9 +187,12 @@ static int dequeue_buffer(struct v4l2r_context *ctx, enum v4l2_buf_type type)
 	struct v4l2_buffer buffer = {
 		.type = type,
 		.memory = V4L2_TYPE_IS_OUTPUT(type) ? V4L2_MEMORY_MMAP : V4L2_MEMORY_DMABUF,
-		.length = 1,
-		.m.planes = planes
 	};
+
+	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
+		buffer.length = 1;
+		buffer.m.planes = planes;
+	}
 
 	if (ioctl(ctx->video_fd, VIDIOC_DQBUF, &buffer) < 0)
 		return -errno;

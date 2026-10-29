@@ -323,6 +323,8 @@ static bool video_device_is_request_decoder(const char *path,
 
 	if (capabilities & V4L2_CAP_VIDEO_M2M_MPLANE)
 		output_type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	else if (capabilities & V4L2_CAP_VIDEO_M2M)
+		output_type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	else
 		goto fail;
 

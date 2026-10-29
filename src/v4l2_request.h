@@ -344,6 +344,73 @@ static inline void *v4l2r_handles_get(struct v4l2r_driver *drv,
  * DRM description used for dma-buf export. Mirrors the FFmpeg hwcontext
  * table.
  */
+
+/* --- single-planar / multiplanar abstraction ------------------------------
+ *
+ * Nothing in the V4L2 stateless API requires multiplanar queues: cedrus (and
+ * other older decoders) expose V4L2_CAP_VIDEO_M2M with the single-planar
+ * buffer types, newer ones V4L2_CAP_VIDEO_M2M_MPLANE. Everything below works
+ * with either; these helpers keep the format plumbing in one place.
+ */
+static inline uint32_t v4l2r_format_pixelformat(const struct v4l2_format *format)
+{
+	return V4L2_TYPE_IS_MULTIPLANAR(format->type) ?
+	       format->fmt.pix_mp.pixelformat : format->fmt.pix.pixelformat;
+}
+
+static inline uint32_t v4l2r_format_width(const struct v4l2_format *format)
+{
+	return V4L2_TYPE_IS_MULTIPLANAR(format->type) ?
+	       format->fmt.pix_mp.width : format->fmt.pix.width;
+}
+
+static inline uint32_t v4l2r_format_height(const struct v4l2_format *format)
+{
+	return V4L2_TYPE_IS_MULTIPLANAR(format->type) ?
+	       format->fmt.pix_mp.height : format->fmt.pix.height;
+}
+
+static inline uint32_t v4l2r_format_bytesperline(const struct v4l2_format *format)
+{
+	return V4L2_TYPE_IS_MULTIPLANAR(format->type) ?
+	       format->fmt.pix_mp.plane_fmt[0].bytesperline :
+	       format->fmt.pix.bytesperline;
+}
+
+static inline uint32_t v4l2r_format_sizeimage(const struct v4l2_format *format)
+{
+	return V4L2_TYPE_IS_MULTIPLANAR(format->type) ?
+	       format->fmt.pix_mp.plane_fmt[0].sizeimage :
+	       format->fmt.pix.sizeimage;
+}
+
+static inline void v4l2r_format_set(struct v4l2_format *format,
+				    uint32_t pixelformat, uint32_t width,
+				    uint32_t height, uint32_t sizeimage)
+{
+	if (V4L2_TYPE_IS_MULTIPLANAR(format->type)) {
+		format->fmt.pix_mp.width = width;
+		format->fmt.pix_mp.height = height;
+		format->fmt.pix_mp.pixelformat = pixelformat;
+		format->fmt.pix_mp.num_planes = 1;
+		format->fmt.pix_mp.plane_fmt[0].sizeimage = sizeimage;
+	} else {
+		format->fmt.pix.width = width;
+		format->fmt.pix.height = height;
+		format->fmt.pix.pixelformat = pixelformat;
+		format->fmt.pix.sizeimage = sizeimage;
+	}
+}
+
+static inline void v4l2r_format_set_sizeimage(struct v4l2_format *format,
+					      uint32_t sizeimage)
+{
+	if (V4L2_TYPE_IS_MULTIPLANAR(format->type))
+		format->fmt.pix_mp.plane_fmt[0].sizeimage = sizeimage;
+	else
+		format->fmt.pix.sizeimage = sizeimage;
+}
+
 struct v4l2r_format_info {
 	uint32_t pixelformat;
 	uint32_t drm_format;
