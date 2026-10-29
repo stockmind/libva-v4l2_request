@@ -217,6 +217,9 @@ struct v4l2r_buffer {
 	/* Set for images derived from a surface: data points into the
 	 * CAPTURE buffer mapping and must not be freed. */
 	bool derived;
+	/* dup()ed dma-buf of that image, handed out through
+	 * vaAcquireBufferHandle() (legacy DRM_PRIME interop), -1 if none. */
+	int dmabuf_fd;
 };
 
 struct v4l2r_image {

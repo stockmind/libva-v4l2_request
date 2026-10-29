@@ -203,6 +203,8 @@ VAStatus v4l2r_DeriveImage(VADriverContextP va_ctx, VASurfaceID surface_id,
 	buffer->nb_elements = 1;
 	buffer->data = surface->map[0];
 	buffer->derived = true;
+	buffer->dmabuf_fd = surface->dmabuf_fd[0] >= 0 ?
+		dup(surface->dmabuf_fd[0]) : -1;
 
 	image->buf = buffer_id;
 	image_object->image = *image;

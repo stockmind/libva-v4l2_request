@@ -12,6 +12,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <va/va_drmcommon.h>
 
 #include "v4l2_request.h"
 
@@ -49,6 +52,7 @@ VAStatus v4l2r_CreateBuffer(VADriverContextP va_ctx, VAContextID context_id,
 	buffer->type = type;
 	buffer->element_size = size;
 	buffer->nb_elements = num_elements;
+	buffer->dmabuf_fd = -1;
 
 	buffer->data = malloc((size_t)size * num_elements);
 	if (!buffer->data) {
@@ -130,6 +134,8 @@ VAStatus v4l2r_DestroyBuffer(VADriverContextP va_ctx, VABufferID buf_id)
 	/* Derived image buffers point into the CAPTURE buffer mapping. */
 	if (!buffer->derived)
 		free(buffer->data);
+	if (buffer->dmabuf_fd >= 0)
+		close(buffer->dmabuf_fd);
 
 	v4l2r_handles_free(&drv->buffers, buf_id);
 	pthread_mutex_unlock(&drv->mutex);
@@ -158,15 +164,47 @@ VAStatus v4l2r_BufferInfo(VADriverContextP va_ctx, VABufferID buf_id,
 	return VA_STATUS_SUCCESS;
 }
 
+/* Legacy buffer-handle export for clients that predate
+ * vaExportSurfaceHandle() (VLC 3 probes the dmabuf path this way). */
 VAStatus v4l2r_AcquireBufferHandle(VADriverContextP va_ctx, VABufferID buf_id,
 				   VABufferInfo *buf_info)
 {
-	(void)va_ctx; (void)buf_id; (void)buf_info;
-	return VA_STATUS_ERROR_UNIMPLEMENTED;
+	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+	struct v4l2r_buffer *buffer;
+
+	if (!buf_info)
+		return VA_STATUS_ERROR_INVALID_PARAMETER;
+
+	buffer = V4L2R_BUFFER_GET(drv, buf_id);
+	if (!buffer || !buffer->derived)
+		return VA_STATUS_ERROR_INVALID_BUFFER;
+
+	if (buf_info->mem_type != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME)
+		return VA_STATUS_ERROR_UNSUPPORTED_MEMORY_TYPE;
+
+	if (buffer->dmabuf_fd < 0)
+		return VA_STATUS_ERROR_OPERATION_FAILED;
+
+	buf_info->handle = (uintptr_t)buffer->dmabuf_fd;
+	buf_info->mem_type = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME;
+	buf_info->mem_size = v4l2r_buffer_bytes(buffer);
+
+	return VA_STATUS_SUCCESS;
 }
 
 VAStatus v4l2r_ReleaseBufferHandle(VADriverContextP va_ctx, VABufferID buf_id)
 {
-	(void)va_ctx; (void)buf_id;
-	return VA_STATUS_ERROR_UNIMPLEMENTED;
+	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+	struct v4l2r_buffer *buffer;
+
+	buffer = V4L2R_BUFFER_GET(drv, buf_id);
+	if (!buffer || !buffer->derived)
+		return VA_STATUS_ERROR_INVALID_BUFFER;
+
+	if (buffer->dmabuf_fd >= 0) {
+		close(buffer->dmabuf_fd);
+		buffer->dmabuf_fd = -1;
+	}
+
+	return VA_STATUS_SUCCESS;
 }
